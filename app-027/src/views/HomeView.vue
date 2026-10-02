@@ -11,7 +11,7 @@ const category = ref<(typeof PATTERN_CATEGORIES)[number]>('全部')
 const busy = ref('')
 const notice = ref('')
 const error = ref('')
-const importedSummary = ref<Array<{ name: string; kept: number; notClosed: number; selfIntersect: number; duplicates: number }>>([])
+const importedSummary = ref<Array<{ name: string; kept: number; autoClosed: number; notClosed: number; selfIntersect: number; duplicates: number }>>([])
 
 const filtered = computed(() =>
   category.value === '全部' ? PATTERN_LIBRARY : PATTERN_LIBRARY.filter((p) => p.category === category.value),
@@ -40,6 +40,7 @@ async function newFromPattern(p: PatternEntry): Promise<void> {
       {
         name: p.name,
         kept: result.contours.length,
+        autoClosed: result.cleanup.autoClosed,
         notClosed: result.cleanup.notClosed,
         selfIntersect: result.cleanup.selfIntersect,
         duplicates: result.cleanup.duplicates,
@@ -68,6 +69,7 @@ async function onFiles(files: FileList | null): Promise<void> {
       summary.push({
         name: file.name,
         kept: result.contours.length,
+        autoClosed: result.cleanup.autoClosed,
         notClosed: result.cleanup.notClosed,
         selfIntersect: result.cleanup.selfIntersect,
         duplicates: result.cleanup.duplicates,
@@ -157,6 +159,7 @@ function shapeStats(p: { shapes: Shape[] }): string {
             <tr>
               <th>文件</th>
               <th>保留轮廓</th>
+              <th>自动闭合</th>
               <th>未闭合</th>
               <th>自交</th>
               <th>重复（已合并）</th>
@@ -166,6 +169,7 @@ function shapeStats(p: { shapes: Shape[] }): string {
             <tr v-for="s in importedSummary" :key="s.name">
               <td>{{ s.name }}</td>
               <td class="num">{{ s.kept }}</td>
+              <td class="num" :class="{ warnCell: s.autoClosed > 0 }">{{ s.autoClosed }}</td>
               <td class="num" :class="{ warnCell: s.notClosed > 0 }">{{ s.notClosed }}</td>
               <td class="num" :class="{ warnCell: s.selfIntersect > 0 }">{{ s.selfIntersect }}</td>
               <td class="num" :class="{ warnCell: s.duplicates > 0 }">{{ s.duplicates }}</td>

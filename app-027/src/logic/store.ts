@@ -134,7 +134,7 @@ export function recomputeAll(force = false): void {
 function applyComputed(shape: Shape, res: ComputedShape): void {
   for (const c of shape.contours) {
     const base = c.warnings.filter(
-      (w) => w === 'not_closed' || w === 'self_intersect' || w === 'duplicate' || w === 'too_short',
+      (w) => w === 'not_closed' || w === 'auto_closed' || w === 'self_intersect' || w === 'duplicate' || w === 'too_short',
     ) as ContourWarning[]
     const extra = res.warningUpdates.get(c.id) ?? []
     c.warnings = [...base, ...extra.filter((w) => !base.includes(w))]

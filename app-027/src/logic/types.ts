@@ -3,6 +3,7 @@ export type Pt = { x: number; y: number }
 
 export type ContourWarning =
   | 'not_closed'
+  | 'auto_closed'
   | 'self_intersect'
   | 'duplicate'
   | 'offset_clipped'
@@ -25,6 +26,10 @@ export type Contour = {
   holes: string[]
   bridges: Bridge[]
   warnings: ContourWarning[]
+  /** 重复合并：本轮廓实际代表的原始路径条数（1 = 无重复） */
+  dupCount?: number
+  /** 自动闭合时首尾原本的缺口宽度（mm） */
+  autoCloseGapMm?: number
 }
 
 export type Shape = { id: string; name: string; contours: Contour[]; layer: number }

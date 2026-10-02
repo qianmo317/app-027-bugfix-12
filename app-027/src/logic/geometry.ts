@@ -304,13 +304,14 @@ export function cleanPoints(pts: Pt[], closed: boolean, tol = 1e-4): Pt[] {
   const res: Pt[] = []
   const n = out.length
   for (let i = 0; i < n; i++) {
-    const prev = out[(i - 1 + n) % n]
-    const cur = out[i]
-    const next = out[(i + 1) % n]
+    // 开放折线首尾恒保留，且前驱/后继不得绕回到另一端（否则近闭合折线会被误删拐角）
     if (!closed && (i === 0 || i === n - 1)) {
-      res.push(cur)
+      res.push(out[i])
       continue
     }
+    const prev = out[i - 1] ?? out[(i - 1 + n) % n]
+    const cur = out[i]
+    const next = out[i + 1] ?? out[(i + 1) % n]
     const cr = Math.abs(orient(prev, cur, next))
     const len = dist(prev, next)
     if (len > 1e-9 && cr / len < 1e-5) continue

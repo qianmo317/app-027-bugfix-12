@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { Pt, Shape, Sheet } from '@/logic/types'
+import type { Pt, Shape, Sheet, ContourWarning } from '@/logic/types'
 import type { ComputedShape } from '@/logic/pipeline'
 import type { Job } from '@/logic/job'
 import type { CutStep } from '@/logic/order'
@@ -293,6 +293,7 @@ type DrawContour = {
 
 const WARNING_COLOR: Record<string, string> = {
   not_closed: '#ffc857',
+  auto_closed: '#5aa9ff',
   self_intersect: '#ff6b6b',
   duplicate: '#b48cff',
   offset_failed: '#ff6b6b',
@@ -312,7 +313,9 @@ const outlineContours = computed<DrawContour[]>(() => {
   const out: DrawContour[] = []
   for (const s of props.shapes) {
     for (const c of s.contours) {
-      const bad = c.warnings.find((w) => w === 'self_intersect' || w === 'not_closed')
+      // 错误优先，其次重复、自动闭合等提示
+      const priority: ContourWarning[] = ['self_intersect', 'not_closed', 'duplicate', 'auto_closed', 'offset_failed']
+      const bad = priority.find((w) => c.warnings.includes(w))
       out.push({
         id: c.id,
         shapeId: s.id,
@@ -320,7 +323,7 @@ const outlineContours = computed<DrawContour[]>(() => {
         contour: c,
         color: bad ? WARNING_COLOR[bad] : props.mode === 'bridge' ? '#4a5768' : '#cfd9e4',
         dash: bad === 'not_closed' ? '7 4' : '',
-        width: c.id === props.selectedContourId ? 2.4 : 1.2,
+        width: c.id === props.selectedContourId ? 2.4 : bad === 'duplicate' ? 2 : 1.2,
       })
     }
   }

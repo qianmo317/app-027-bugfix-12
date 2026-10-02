@@ -385,7 +385,74 @@ export async function runSelfTest(settings: CutSettings = DEFAULT_CUT_SETTINGS, 
     checks.push(ok('export-plt', '导出 PLT 用例', false, '没有可用的纹样'))
   }
 
-  // ---------- 7. 性能 ----------
+  // ---------- 7. 路径清理回归：近闭合自动闭合 / 重复全合并并标记 ----------
+  {
+    const q: Pt[] = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ]
+    // 手绘矩形（无 Z 标记），缺口在第一条边中间：首尾相距 0.1mm ≤ 默认容差 0.2
+    const near: Pt[] = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+      { x: 0, y: 0.1 },
+    ]
+    // 同一条近闭合路径画了 2 遍，且第二遍点序反向
+    const nearDup = near.slice().reverse()
+    // 真正未闭合的折线（首尾相距远）
+    const openLine: Pt[] = [
+      { x: 50, y: 50 },
+      { x: 60, y: 50 },
+      { x: 60, y: 60 },
+    ]
+    // 同一矩形画 3 遍：两条同点序、一条反向
+    const tripleQ = q.map((p) => ({ ...p, x: p.x + 30 }))
+    const triple: Array<{ points: Pt[]; closed: boolean }> = [
+      { points: tripleQ, closed: true },
+      { points: tripleQ.map((p) => ({ ...p })), closed: true },
+      { points: tripleQ.slice().reverse(), closed: true },
+    ]
+    const regRaw: Array<{ points: Pt[]; closed: boolean }> = [
+      { points: near, closed: false },
+      { points: nearDup, closed: false },
+      { points: openLine, closed: false },
+      ...triple,
+    ]
+    const reg = cleanupContours(regRaw, { toleranceMm: 0.15, closeToleranceMm: 0.2 })
+    const nearKept = reg.contours.filter((c) => c.warnings.includes('auto_closed'))
+    const tripleKept = reg.contours.find((c) => c.dupCount === 3)
+    const openKept = reg.contours.filter((c) => !c.closed && c.warnings.includes('not_closed'))
+    checks.push(
+      ok(
+        'cleanup-auto-close',
+        '近闭合（无闭合标记、首尾 ≤ 容差）自动闭合且不再整条丢弃；反向重复的近闭合也被合并',
+        nearKept.length === 1 &&
+          reg.report.autoClosed === 2 &&
+          nearKept[0].closed &&
+          nearKept[0].points.length === 4 &&
+          (nearKept[0].autoCloseGapMm ?? 0) > 0.09 &&
+          openKept.length === 1 &&
+          reg.report.dropped === 0,
+        `输入 6 条子路径：近闭合 2 条（含反向）自动闭合后合为 1 条 4 点闭合轮廓（autoClosed=${reg.report.autoClosed}，缺口 ${nearKept[0]?.autoCloseGapMm?.toFixed(2)}mm），未闭合 1 条保留，无整路丢弃`,
+      ),
+    )
+    checks.push(
+      ok(
+        'cleanup-duplicate-all',
+        '同轨迹 3 条全部合并为 1 条（不只合掉一对），并在轮廓上打标、记录条数',
+        !!tripleKept && tripleKept.dupCount === 3 && reg.report.duplicates === 3 && reg.report.duplicateGroups.length === 2,
+        tripleKept
+          ? `近闭合对 + 三重矩形共合并掉 ${reg.report.duplicates} 条、${reg.report.duplicateGroups.length} 组；3 条重叠路径（含 1 条反向）→ 保留 1 条（dupCount=${tripleKept.dupCount}），带 duplicate 标记`
+          : '未找到重复合并结果',
+      ),
+    )
+  }
+
+  // ---------- 8. 性能 ----------
   const bigPts = wavyCircle(80, 80, 62, 5000, 2.5, 11)
   const rawBig: Array<{ points: Pt[]; closed: boolean }> = [{ points: bigPts, closed: true }]
   for (let i = 0; i < 40; i++) {
@@ -406,14 +473,14 @@ export async function runSelfTest(settings: CutSettings = DEFAULT_CUT_SETTINGS, 
     ),
   )
 
-  // ---------- 8. 缓存签名（参数变化才失效） ----------
+  // ---------- 9. 缓存签名（参数变化才失效） ----------
   const sigA = computeShape(bigShape, settings, mat).signature
   const sigB = computeShape(bigShape, { ...settings, bridgeWidthMm: settings.bridgeWidthMm + 0.1 }, mat).signature
   checks.push(
     ok('cache-signature', '参数变化使缓存签名失效（避免每次渲染都重算）', sigA !== sigB, `签名一致 = ${sigA === sigB}（应为 false，参数已变化）`),
   )
 
-  // ---------- 9. 刀补：凹角自交裁剪 + 明确告警 ----------
+  // ---------- 10. 刀补：凹角自交裁剪 + 明确告警 ----------
   const starShape: Shape = {
     id: 'st_offset',
     name: '刀补用例',
