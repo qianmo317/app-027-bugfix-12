@@ -3,6 +3,7 @@ export type Pt = { x: number; y: number }
 
 export type ContourWarning =
   | 'not_closed'
+  | 'auto_closed'
   | 'self_intersect'
   | 'duplicate'
   | 'offset_clipped'
@@ -25,6 +26,8 @@ export type Contour = {
   holes: string[]
   bridges: Bridge[]
   warnings: ContourWarning[]
+  /** 导入清理时与本轮廓重叠合并掉的重复条数（≥1 表示文件里同一条线画了多遍） */
+  dupCount?: number
 }
 
 export type Shape = { id: string; name: string; contours: Contour[]; layer: number }

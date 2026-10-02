@@ -19,6 +19,7 @@ export type ImportedSummary = {
   file: string
   name: string
   kept: number
+  autoClosed: number
   notClosed: number
   selfIntersect: number
   duplicates: number
@@ -96,6 +97,7 @@ export async function runSelfTest(settings: CutSettings = DEFAULT_CUT_SETTINGS, 
         file: p.file,
         name: p.name,
         kept: res.contours.length,
+        autoClosed: res.cleanup.autoClosed,
         notClosed: res.cleanup.notClosed,
         selfIntersect: res.cleanup.selfIntersect,
         duplicates: res.cleanup.duplicates,
@@ -167,6 +169,74 @@ export async function runSelfTest(settings: CutSettings = DEFAULT_CUT_SETTINGS, 
       '干净文件不误报：经典八角窗花 0 未闭合 / 0 自交 / 0 重复',
       !!clean && clean.notClosed === 0 && clean.si === 0 && clean.dup === 0,
       clean ? `未闭合 ${clean.notClosed}｜自交 ${clean.si}｜重复 ${clean.dup}` : '未导入',
+    ),
+  )
+
+  // ---------- 1b. 手绘导出清理：近闭合自动闭合 + 同线多遍全部合并并标记 ----------
+  const rectPts: Pt[] = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 30 },
+    { x: 0, y: 30 },
+  ]
+  // 2 条无闭合标记、首尾差 0.08mm（< 容差 0.2）的手绘方；1 条正常 polygon；1 条反向 polygon
+  const nearClosedCopies: Array<{ points: Pt[]; closed: boolean }> = [
+    { points: [...rectPts, { x: 0.06, y: 0.05 }], closed: false },
+    { points: [...rectPts, { x: 0.06, y: 0.05 }], closed: false },
+    { points: rectPts.map((p) => ({ ...p })), closed: true },
+    { points: rectPts.slice().reverse(), closed: true },
+  ]
+  const handRes = cleanupContours(nearClosedCopies, { toleranceMm: settings.toleranceMm, closeToleranceMm: settings.closeToleranceMm })
+  const handKept = handRes.contours[0]
+  checks.push(
+    ok(
+      'handdrawn-close',
+      '近闭合手绘线自动闭合且不被丢弃：保留 1 条闭合轮廓，自动闭合计数 = 2',
+      handRes.contours.length === 1 && handRes.report.autoClosed === 2 && !!handKept?.closed && handRes.report.dropped === 0,
+      `4 条子路径（2 条无闭合标记、首尾 0.08mm）→ 保留 ${handRes.contours.length}，自动闭合 ${handRes.report.autoClosed}，丢弃 ${handRes.report.dropped}`,
+    ),
+  )
+
+  // 同一条开放线画了 5 遍（交替反向）：只切一次，5 条全部合掉且保留者带 duplicate 标记与条数
+  const openLine: Pt[] = [
+    { x: 0, y: 0 },
+    { x: 12, y: 1.5 },
+    { x: 24, y: 0 },
+    { x: 36, y: -1.5 },
+  ]
+  const fiveCopies: Array<{ points: Pt[]; closed: boolean }> = Array.from({ length: 5 }, (_, i) => ({
+    points: i % 2 === 0 ? openLine.map((p) => ({ ...p })) : openLine.slice().reverse(),
+    closed: false,
+  }))
+  const fiveRes = cleanupContours(fiveCopies, { toleranceMm: settings.toleranceMm, closeToleranceMm: settings.closeToleranceMm })
+  const fiveKept = fiveRes.contours[0]
+  checks.push(
+    ok(
+      'duplicate-five',
+      '同一条线画 5 遍：按实际条数全部合并（保留 1、合并 4），清单/画布标记 duplicate 与 ×5',
+      fiveRes.contours.length === 1 &&
+        fiveRes.report.duplicates === 4 &&
+        fiveRes.report.duplicateGroups.length === 1 &&
+        !!fiveKept?.warnings.includes('duplicate') &&
+        fiveKept.dupCount === 4,
+      fiveKept
+        ? `保留 ${fiveRes.contours.length}、合并 ${fiveRes.report.duplicates} 条，保留者警告 [${fiveKept.warnings.join(',')}]，dupCount=${fiveKept.dupCount ?? 0}`
+        : '无保留轮廓',
+    ),
+  )
+
+  // 不同的线不得误合并：两条形状相同但位置错开的开放线都应保留
+  const distinctLines: Array<{ points: Pt[]; closed: boolean }> = [
+    { points: openLine.map((p) => ({ ...p })), closed: false },
+    { points: openLine.map((p) => ({ x: p.x + 3, y: p.y })), closed: false },
+  ]
+  const distinctRes = cleanupContours(distinctLines, { toleranceMm: settings.toleranceMm, closeToleranceMm: settings.closeToleranceMm })
+  checks.push(
+    ok(
+      'duplicate-no-false',
+      '不重合的线不误合并：位置错开 3mm 的两条同形开放线均保留、0 重复',
+      distinctRes.contours.length === 2 && distinctRes.report.duplicates === 0,
+      `保留 ${distinctRes.contours.length}，合并 ${distinctRes.report.duplicates}`,
     ),
   )
 

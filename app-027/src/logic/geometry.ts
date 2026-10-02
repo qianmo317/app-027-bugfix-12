@@ -366,53 +366,55 @@ export function toCCW(pts: Pt[]): Pt[] {
 }
 
 /**
- * 循环比较两条点序列是否相同（允许不同起点与反向），容差 tol（mm）。
- * 仅用于「同 bbox / 同面积 / 同周长」候选组内的精确比对，成本可控。
+ * 几何等价比对（容差 tol，mm）：两条折线互为「带容差重合」即判为同一条线。
+ * 允许顶点数不同（手绘描线常多出共线点或微小回边）、允许反向；
+ * 闭合折线允许不同起点（循环），开放折线端点对齐。
+ * 判据是双向点到折线距离，对顶点位置/相位不敏感。
  */
-export function cyclicMatch(a: Pt[], b: Pt[], tol: number): boolean {
-  if (a.length !== b.length || a.length === 0) return false
-  const n = a.length
-  for (let off = 0; off < n; off++) {
-    if (dist(a[0], b[off]) > tol) continue
-    let ok = true
-    for (let i = 1; i < n; i++) {
-      if (dist(a[i], b[(off + i) % n]) > tol) {
-        ok = false
-        break
-      }
+export function pathsOverlap(a: Pt[], b: Pt[], closed: boolean, tol: number): boolean {
+  if (a.length < 2 || b.length < 2) return false
+  const la = polylineLength(a, closed)
+  const lb = polylineLength(b, closed)
+  if (la <= 0 || lb <= 0 || Math.abs(la - lb) > Math.max(tol * 4, 1.5)) return false
+
+  const oneWay = (from: Pt[], to: Pt[]): boolean => {
+    for (const p of from) {
+      if (closestOnPolyline(p, to, closed).distance > tol) return false
     }
-    if (ok) return true
+    return true
   }
-  // 反向
+
+  if (!closed) {
+    // 端点必须对齐（正向或反向），再做双向距离检查
+    const fwdEnds = dist(a[0], b[0]) <= tol && dist(a[a.length - 1], b[b.length - 1]) <= tol
+    const revEnds = dist(a[0], b[b.length - 1]) <= tol && dist(a[a.length - 1], b[0]) <= tol
+    if (!fwdEnds && !revEnds) return false
+    return oneWay(a, b) && oneWay(b, a)
+  }
+
+  // 闭合：先确认 a 的起点落在 b 上（含反向），再做双向距离检查
+  const hitFwd = closestOnPolyline(a[0], b, true).distance <= tol
   const rb = b.slice().reverse()
-  for (let off = 0; off < n; off++) {
-    if (dist(a[0], rb[off]) > tol) continue
-    let ok = true
-    for (let i = 1; i < n; i++) {
-      if (dist(a[i], rb[(off + i) % n]) > tol) {
-        ok = false
-        break
-      }
-    }
-    if (ok) return true
-  }
-  return false
+  const hitRev = closestOnPolyline(a[0], rb, true).distance <= tol
+  if (!hitFwd && !hitRev) return false
+  return oneWay(a, b) && oneWay(b, a)
 }
 
-/** 重复路径候选键：同 bbox（0.01mm）+ 面积/周长（0.01）+ 点数 */
-export function duplicateKey(pts: Pt[], closed: boolean): string {
+/**
+ * 重复路径粗网格分桶：bbox 覆盖到的网格单元（cell 默认 20mm）。
+ * 跨单元边界的副本一定共享至少一个桶；cell 远大于容差，避免短路径落在相邻桶永不相遇。
+ */
+export function duplicateBins(pts: Pt[], cell = 20): string[] {
   const b = boundsOf(pts)
-  const a = closed ? polygonArea(pts) : 0
-  const l = polylineLength(pts, closed)
-  return [
-    Math.round(b.minX * 100),
-    Math.round(b.minY * 100),
-    Math.round(b.maxX * 100),
-    Math.round(b.maxY * 100),
-    Math.round(a * 100),
-    Math.round(l * 100),
-    pts.length,
-  ].join('|')
+  const x0 = Math.floor(b.minX / cell)
+  const x1 = Math.floor(b.maxX / cell)
+  const y0 = Math.floor(b.minY / cell)
+  const y1 = Math.floor(b.maxY / cell)
+  const out: string[] = []
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) out.push(`${x},${y}`)
+  }
+  return out
 }
 
 let uidSeq = 0

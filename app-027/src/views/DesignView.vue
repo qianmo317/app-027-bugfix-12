@@ -120,6 +120,15 @@ const problems = computed<Problem[]>(() => {
             text: `未闭合：首尾相距 ${gap.toFixed(2)}mm（容差 ${project.value?.settings.closeToleranceMm}mm），切不穿`,
             level: 'err',
           })
+        } else if (w === 'auto_closed') {
+          out.push({
+            id: `${c.id}-ac`,
+            shapeId: s.id,
+            contourId: c.id,
+            kind: w,
+            text: `已自动闭合：首尾相距不超过容差 ${project.value?.settings.closeToleranceMm}mm，按闭合轮廓处理`,
+            level: 'info',
+          })
         } else if (w === 'self_intersect') {
           out.push({
             id: `${c.id}-si`,
@@ -130,7 +139,15 @@ const problems = computed<Problem[]>(() => {
             level: 'err',
           })
         } else if (w === 'duplicate') {
-          out.push({ id: `${c.id}-dp`, shapeId: s.id, contourId: c.id, kind: w, text: '重复路径：存在完全重叠/反向重叠的路径，已合并只切一次', level: 'warn' })
+          const copies = (c.dupCount ?? 0) + 1
+          out.push({
+            id: `${c.id}-dp`,
+            shapeId: s.id,
+            contourId: c.id,
+            kind: w,
+            text: `重复路径：同一条线在文件里画了 ${copies} 遍（含反向重叠），已合并为 1 条、只切一次`,
+            level: 'warn',
+          })
         } else if (w === 'offset_failed') {
           out.push({ id: `${c.id}-of`, shapeId: s.id, contourId: c.id, kind: w, text: comp?.byId.get(c.id)?.offsetMessage || '刀补偏置失败，已保留原路径', level: 'err' })
         } else if (w === 'offset_clipped') {
@@ -439,6 +456,7 @@ const computedMap = computed(() => {
         <div class="legend">
           <span v-if="mode === 'outline'"><i style="background: #cfd9e4"></i>轮廓</span>
           <span><i style="background: #ffc857"></i>未闭合</span>
+          <span><i style="background: #5ad1c2"></i>已自动闭合</span>
           <span><i style="background: #ff6b6b"></i>自交</span>
           <span><i style="background: #b48cff"></i>重复路径</span>
           <span v-if="mode === 'toolpath'"><i style="background: #ff8f3c"></i>刀路</span>

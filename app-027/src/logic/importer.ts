@@ -265,6 +265,9 @@ export function importSvgText(text: string, opts: CleanupOptions): ImportResult 
   if (backgroundSkipped) notes.push('已跳过整幅背景矩形（不参与切割）')
   if (hiddenSkipped > 0) notes.push(`已跳过 ${hiddenSkipped} 个隐藏元素（display/visibility）`)
   if (skipped > 0) notes.push(`已跳过 ${skipped} 个不支持的元素（text/image/use 等）`)
+  if (cleanup.autoClosed > 0) notes.push(`${cleanup.autoClosed} 条首尾近接的手绘线已自动闭合（容差 ${opts.closeToleranceMm}mm），已在清单中标注`)
+  if (cleanup.duplicates > 0)
+    notes.push(`${cleanup.duplicates} 条与其他路径完全重叠的重复线已合并（只切一次），保留路径已在清单与画布上用紫色标出`)
   if (!vbAttr) notes.push('SVG 无 viewBox：按 1 单位 = 1mm（或 96dpi 尺寸）换算')
 
   return {

@@ -123,6 +123,7 @@ const faqOpen = ref<number | null>(0)
                 <tr>
                   <th>纹样</th>
                   <th>轮廓</th>
+                  <th>自动闭合</th>
                   <th>未闭合</th>
                   <th>自交</th>
                   <th>重复</th>
@@ -136,6 +137,7 @@ const faqOpen = ref<number | null>(0)
                 <tr v-for="s in report.summaries" :key="s.file">
                   <td>{{ s.name }}</td>
                   <td class="num">{{ s.kept }}</td>
+                  <td class="num" :class="{ infoCell: s.autoClosed > 0 }">{{ s.autoClosed }}</td>
                   <td class="num" :class="{ warnCell: s.notClosed > 0 }">{{ s.notClosed }}</td>
                   <td class="num" :class="{ warnCell: s.selfIntersect > 0 }">{{ s.selfIntersect }}</td>
                   <td class="num" :class="{ warnCell: s.duplicates > 0 }">{{ s.duplicates }}</td>
@@ -251,5 +253,9 @@ const faqOpen = ref<number | null>(0)
 
 .warnCell {
   color: var(--warn);
+}
+
+.infoCell {
+  color: #5ad1c2;
 }
 </style>

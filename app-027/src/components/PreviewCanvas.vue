@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { Pt, Shape, Sheet } from '@/logic/types'
+import type { Pt, Shape, Sheet, ContourWarning } from '@/logic/types'
 import type { ComputedShape } from '@/logic/pipeline'
 import type { Job } from '@/logic/job'
 import type { CutStep } from '@/logic/order'
@@ -293,11 +293,20 @@ type DrawContour = {
 
 const WARNING_COLOR: Record<string, string> = {
   not_closed: '#ffc857',
+  auto_closed: '#5ad1c2',
   self_intersect: '#ff6b6b',
   duplicate: '#b48cff',
   offset_failed: '#ff6b6b',
   offset_clipped: '#5aa9ff',
   bridge_degraded: '#ff8f3c',
+}
+
+/** 警告取色优先级：自交 > 未闭合 > 重复 > 已自动闭合 */
+function contourWarning(c: Shape['contours'][number]): ContourWarning | undefined {
+  for (const w of ['self_intersect', 'not_closed', 'duplicate', 'auto_closed'] as ContourWarning[]) {
+    if (c.warnings.includes(w)) return w
+  }
+  return undefined
 }
 
 function pointsToD(pts: Pt[], closed: boolean): string {
@@ -312,7 +321,7 @@ const outlineContours = computed<DrawContour[]>(() => {
   const out: DrawContour[] = []
   for (const s of props.shapes) {
     for (const c of s.contours) {
-      const bad = c.warnings.find((w) => w === 'self_intersect' || w === 'not_closed')
+      const bad = contourWarning(c)
       out.push({
         id: c.id,
         shapeId: s.id,
@@ -322,6 +331,29 @@ const outlineContours = computed<DrawContour[]>(() => {
         dash: bad === 'not_closed' ? '7 4' : '',
         width: c.id === props.selectedContourId ? 2.4 : 1.2,
       })
+    }
+  }
+  return out
+})
+
+/** 重复路径的强调底纹：紫色粗描边衬在主线下方，提示文件里同轨迹画了多遍 */
+const duplicateHalo = computed(() => outlineContours.value.filter((c) => c.contour.warnings.includes('duplicate')))
+
+/** 重复路径条数徽标位置（起点处） */
+const duplicateBadges = computed(() =>
+  outlineContours.value
+    .filter((c) => c.contour.warnings.includes('duplicate'))
+    .map((c) => ({ id: c.id, x: c.contour.points[0].x, y: c.contour.points[0].y, count: (c.contour.dupCount ?? 0) + 1 })),
+)
+
+/** 自动闭合点：首尾衔接处的青色标记（手绘线本无闭合标记） */
+const autoCloseMarks = computed(() => {
+  const out: Array<{ id: string; x: number; y: number }> = []
+  for (const s of props.shapes) {
+    for (const c of s.contours) {
+      if (c.warnings.includes('auto_closed') && c.closed && c.points.length > 0) {
+        out.push({ id: c.id, x: c.points[0].x, y: c.points[0].y })
+      }
     }
   }
   return out
@@ -523,6 +555,16 @@ function focusContour(id: string): void {
 
         <!-- 成品轮廓 -->
         <g v-if="mode === 'outline' || mode === 'bridge' || !job" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <!-- 重复路径底纹：提示同一轨迹在文件里画了多遍 -->
+          <path
+            v-for="c in duplicateHalo"
+            :key="`halo${c.id}`"
+            :d="c.d"
+            stroke="#b48cff"
+            :stroke-width="Math.max(c.width + 2.6, 3.6)"
+            opacity="0.35"
+            vector-effect="non-scaling-stroke"
+          />
           <path
             v-for="c in outlineContours"
             :key="c.id"
@@ -532,6 +574,36 @@ function focusContour(id: string): void {
             :stroke-width="c.width"
             vector-effect="non-scaling-stroke"
           />
+          <!-- 自动闭合点 -->
+          <g v-if="mode === 'outline'">
+            <circle
+              v-for="m in autoCloseMarks"
+              :key="`ac${m.id}`"
+              :cx="m.x"
+              :cy="m.y"
+              :r="3 / zoom"
+              fill="none"
+              stroke="#5ad1c2"
+              :stroke-width="1.6 / zoom"
+            />
+          </g>
+        </g>
+
+        <!-- 重复路径条数徽标 -->
+        <g v-if="mode === 'outline'">
+          <g v-for="c in duplicateBadges" :key="`db${c.id}`">
+            <circle :cx="c.x" :cy="c.y" :r="6.5 / zoom" fill="#2a2140" stroke="#b48cff" :stroke-width="1.2 / zoom" />
+            <text
+              :x="c.x"
+              :y="c.y + 2.8 / zoom"
+              :font-size="7.5 / zoom"
+              text-anchor="middle"
+              fill="#d7c4ff"
+              font-family="Plotter Mono, monospace"
+            >
+              ×{{ c.count }}
+            </text>
+          </g>
         </g>
 
         <!-- 刀路（切割顺序） -->
